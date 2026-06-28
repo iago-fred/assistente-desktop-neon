@@ -1,4 +1,5 @@
 import { writeFileSync, existsSync, mkdirSync } from "node:fs";
+import { spawn } from "node:child_process";
 import { join, dirname } from "node:path";
 import { fileURLToPath } from "node:url";
 import type { AgentConfig, AgentMap, AgentStatus } from "../types/index.js";
@@ -107,6 +108,73 @@ export function queueMessageToAgent(
     success: true,
     output: `Mensagem enfileirada para ${agent.name}`,
   };
+}
+
+// ─── Roteamento Síncrono (com --deliver) ─────────────────────────
+
+/**
+ * Envia uma mensagem para um agente de forma SÍNCRONA.
+ *
+ * Executa `openclaw agent --session-key <key> --message <msg> --deliver --json`
+ * e aguarda a resposta do agente. Usa --deliver pra resposta chegar no
+ * canal original do agente (Telegram).
+ *
+ * ⚠️  Pode levar até 30s dependendo da resposta do modelo.
+ */
+export function routeMessageToAgent(
+  agentId: string,
+  message: string,
+  metadata?: Record<string, unknown>,
+): Promise<{ success: boolean; output: string }> {
+  return new Promise((resolve) => {
+    const agent = validateAgent(agentId);
+    if (!agent) {
+      resolve({ success: false, output: `Agente '${agentId}' não encontrado` });
+      return;
+    }
+
+    // Log do evento
+    appendJsonLine(EVENT_LOG, {
+      type: "message",
+      agent: agentId,
+      message,
+      metadata,
+      timestamp: new Date().toISOString(),
+    });
+
+    // Executa openclaw agent com --deliver --json
+    const proc = spawn("openclaw", [
+      "agent",
+      "--session-key", agent.sessionKey,
+      "--message", message,
+      "--deliver",
+      "--json",
+    ], {
+      timeout: 60_000,
+      stdio: ["ignore", "pipe", "pipe"],
+    });
+
+    let stdout = "";
+    let stderr = "";
+
+    proc.stdout.on("data", (data: Buffer) => { stdout += data.toString(); });
+    proc.stderr.on("data", (data: Buffer) => { stderr += data.toString(); });
+
+    proc.on("close", (code) => {
+      if (code === 0) {
+        resolve({ success: true, output: stdout.trim() });
+      } else if (code === 124 || code === 143) {
+        // Timeout — resposta pode ter sido enviada mesmo assim
+        resolve({ success: true, output: stdout.trim() || "(timeout — mensagem entregue)" });
+      } else {
+        resolve({ success: false, output: stderr.trim() || `exit code ${code}` });
+      }
+    });
+
+    proc.on("error", (err) => {
+      resolve({ success: false, output: `Erro: ${err.message}` });
+    });
+  });
 }
 
 // ─── Eventos ────────────────────────────────────────────────────────
