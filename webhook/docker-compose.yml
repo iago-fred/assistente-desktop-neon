@@ -7,6 +7,8 @@ services:
     network_mode: "host"
     restart: unless-stopped
     user: "1001:1001"
+    env_file:
+      - .env
     volumes:
       - ./logs:/app/logs
       # Monta o CLI do OpenClaw do host pra rotear mensagens pros agentes
@@ -14,8 +16,6 @@ services:
       - /home/ubuntu/.openclaw:/home/ubuntu/.openclaw
     environment:
       - NODE_ENV=production
-      - WEBHOOK_PORT=3344
-      - WEBHOOK_HOST=0.0.0.0
       - PATH=/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin:/home/ubuntu/.npm-global/bin
       - HOME=/home/ubuntu
     logging:

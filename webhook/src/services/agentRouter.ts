@@ -5,23 +5,27 @@ import type { AgentConfig, AgentMap, AgentStatus } from "../types/index.js";
 
 // ─── Configuração dos Agentes ───────────────────────────────────────
 
+function getEnv(key: string, fallback: string): string {
+  return process.env[key] || fallback;
+}
+
 export const AGENTS: AgentMap = {
   neon: {
     name: "Neon 👻",
     owner: "Iago",
-    sessionKey: "agent:main:main",
+    sessionKey: getEnv("NEON_SESSION_KEY", "agent:main:main"),
     description: "Assistente pessoal do Iago",
   },
   emily: {
     name: "Emily 🌸",
     owner: "Jéssica",
-    sessionKey: "agent:emily:main",
+    sessionKey: getEnv("EMILY_SESSION_KEY", "agent:emily:main"),
     description: "Assistente pessoal da Jéssica",
   },
   oliver: {
     name: "Oliver 🤖",
     owner: "Iago",
-    sessionKey: "agent:main:oliver",
+    sessionKey: getEnv("OLIVER_SESSION_KEY", "agent:main:oliver"),
     description: "Dev-ops engineer",
   },
 };

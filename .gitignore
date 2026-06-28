@@ -10,3 +10,8 @@ Thumbs.db
 webhook/node_modules/
 webhook/dist/
 webhook/logs/
+
+# Environment files (credentials)
+.env
+.env.local
+.env.production
