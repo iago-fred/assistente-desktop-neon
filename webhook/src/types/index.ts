@@ -32,6 +32,7 @@ export interface RegisterPayload {
 export interface ApiResponse {
   status: "sent" | "logged" | "error" | "registered";
   agent?: string;
+  response?: string;
   timestamp: string;
   error?: string;
 }

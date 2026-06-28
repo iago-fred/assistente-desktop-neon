@@ -14,19 +14,19 @@ export const AGENTS: AgentMap = {
   neon: {
     name: "Neon 👻",
     owner: "Iago",
-    sessionKey: getEnv("NEON_SESSION_KEY", "agent:main:main"),
+    sessionKey: getEnv("WEBHOOK_SESSION_KEY", "agent:main:webhook-internal"),
     description: "Assistente pessoal do Iago",
   },
   emily: {
     name: "Emily 🌸",
     owner: "Jéssica",
-    sessionKey: getEnv("EMILY_SESSION_KEY", "agent:emily:main"),
+    sessionKey: getEnv("WEBHOOK_SESSION_KEY", "agent:main:webhook-internal"),
     description: "Assistente pessoal da Jéssica",
   },
   oliver: {
     name: "Oliver 🤖",
     owner: "Iago",
-    sessionKey: getEnv("OLIVER_SESSION_KEY", "agent:main:oliver"),
+    sessionKey: getEnv("WEBHOOK_SESSION_KEY", "agent:main:webhook-internal"),
     description: "Dev-ops engineer",
   },
 };
@@ -110,22 +110,24 @@ export function queueMessageToAgent(
   };
 }
 
-// ─── Roteamento Síncrono (com --deliver) ─────────────────────────
+// ─── Roteamento Síncrono (sessão webhook-interna) ────────────
 
 /**
- * Envia uma mensagem para um agente de forma SÍNCRONA.
+ * Envia uma mensagem para a sessão interna do webhook e retorna a resposta.
  *
- * Executa `openclaw agent --session-key <key> --message <msg> --deliver --json`
- * e aguarda a resposta do agente. Usa --deliver pra resposta chegar no
- * canal original do agente (Telegram).
+ * Executa `openclaw agent --session-key agent:main:webhook-internal --message <msg> --json`
+ * e extrai a resposta do agente do JSON retornado.
  *
- * ⚠️  Pode levar até 30s dependendo da resposta do modelo.
+ * NÃO usa --deliver — a resposta fica contida no JSON, sem passar
+ * por Telegram ou qualquer canal externo.
+ *
+ * ⚠️  Pode levar até 60s dependendo do modelo.
  */
 export function routeMessageToAgent(
   agentId: string,
   message: string,
   metadata?: Record<string, unknown>,
-): Promise<{ success: boolean; output: string }> {
+): Promise<{ success: boolean; output: string; response?: string }> {
   return new Promise((resolve) => {
     const agent = validateAgent(agentId);
     if (!agent) {
@@ -142,12 +144,11 @@ export function routeMessageToAgent(
       timestamp: new Date().toISOString(),
     });
 
-    // Executa openclaw agent com --deliver --json
+    // Executa openclaw agent --json (SEM --deliver)
     const proc = spawn("openclaw", [
       "agent",
       "--session-key", agent.sessionKey,
       "--message", message,
-      "--deliver",
       "--json",
     ], {
       timeout: 60_000,
@@ -162,10 +163,21 @@ export function routeMessageToAgent(
 
     proc.on("close", (code) => {
       if (code === 0) {
-        resolve({ success: true, output: stdout.trim() });
+        // Tenta extrair a resposta do JSON
+        try {
+          const parsed = JSON.parse(stdout);
+          const responseText = parsed?.result?.meta?.finalAssistantVisibleText
+            || parsed?.result?.meta?.finalAssistantRawText;
+          if (responseText) {
+            resolve({ success: true, output: stdout.trim(), response: responseText });
+          } else {
+            resolve({ success: true, output: stdout.trim() });
+          }
+        } catch {
+          resolve({ success: true, output: stdout.trim() });
+        }
       } else if (code === 124 || code === 143) {
-        // Timeout — resposta pode ter sido enviada mesmo assim
-        resolve({ success: true, output: stdout.trim() || "(timeout — mensagem entregue)" });
+        resolve({ success: true, output: stdout.trim() || "(timeout)" });
       } else {
         resolve({ success: false, output: stderr.trim() || `exit code ${code}` });
       }

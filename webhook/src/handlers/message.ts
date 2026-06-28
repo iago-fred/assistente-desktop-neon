@@ -34,13 +34,14 @@ export async function handleMessage(
     return;
   }
 
-  // Envia via openclaw agent --deliver (síncrono)
+  // Envia via openclaw agent --json (sessão webhook-interna)
   const result = await routeMessageToAgent(agent, message, metadata);
 
   if (result.success) {
     const res: ApiResponse = {
       status: "sent",
       agent: agentConfig.name,
+      response: result.response,
       timestamp: new Date().toISOString(),
     };
     reply.code(200).send(res);
