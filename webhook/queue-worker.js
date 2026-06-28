@@ -1,28 +1,23 @@
 #!/usr/bin/env node
 
 /**
- * queue-worker.js — Processa a fila de mensagens do webhook
+ * queue-worker.js — Arquivador da fila de mensagens do webhook
  *
- * Lê `logs/message_queue.jsonl` e encaminha cada mensagem para o agente
- * via OpenClaw CLI.
- *
- * Estratégia de roteamento:
- *   - Agentes com canal (telegram/whatsapp/etc): usa `openclaw message send`
- *     que é fire-and-forget e retorna instantaneamente.
- *   - Agentes sem canal (apenas sessionKey): usa `openclaw agent` que
- *     processa a mensagem de forma síncrona (mais lento).
+ * Lê `logs/message_queue.jsonl` e arquiva as mensagens processadas.
+ * O roteamento real para os agentes é feito via cron job do OpenClaw,
+ * que usa `sessions_send` internamente (sem passar pelo Telegram).
  *
  * Uso:
- *   node queue-worker.js                   # Processa uma vez e sai
- *   node queue-worker.js --watch           # Monitora a fila continuamente
- *   node queue-worker.js --clear           # Limpa a fila (arquiva)
+ *   node queue-worker.js                   # Arquivar fila e sair
+ *   node queue-worker.js --watch           # Monitorar a fila continuamente
+ *   node queue-worker.js --clear           # Limpar a fila (arquivar)
+ *   node queue-worker.js --dump            # Mostrar conteúdo da fila
  *
  * Dica: Para rodar em background:
  *   nohup node queue-worker.js --watch > logs/worker.log 2>&1 &
  */
 
-import { readFileSync, renameSync, writeFileSync, existsSync, mkdirSync } from "node:fs";
-import { spawn } from "node:child_process";
+import { readFileSync, renameSync, writeFileSync, existsSync, mkdirSync, readdirSync } from "node:fs";
 import { join, dirname } from "node:path";
 import { fileURLToPath } from "node:url";
 
@@ -35,7 +30,8 @@ const LOCK_FILE = join(LOG_DIR, "queue.lock");
 const args = process.argv.slice(2);
 const WATCH_MODE = args.includes("--watch");
 const CLEAR_MODE = args.includes("--clear");
-const POLL_INTERVAL_MS = 5_000;
+const DUMP_MODE = args.includes("--dump");
+const POLL_INTERVAL_MS = 10_000;
 
 // ─── Utilitários ────────────────────────────────────────────────────
 
@@ -48,85 +44,6 @@ function readQueue() {
   const content = readFileSync(QUEUE_FILE, "utf-8").trim();
   if (!content) return [];
   return content.split("\n").map((line) => JSON.parse(line));
-}
-
-/**
- * Envia mensagem para um agente via `openclaw message send`.
- * Funciona para agentes com canal configurado (telegram, etc.).
- * É fire-and-forget — retorna instantaneamente.
- */
-function sendViaMessage(channel, target, message) {
-  return new Promise((resolve) => {
-    const proc = spawn("openclaw", [
-      "message", "send",
-      "--channel", channel,
-      "--target", target,
-      "--message", message,
-      "--json",
-    ], {
-      timeout: 15_000,
-      stdio: ["ignore", "pipe", "pipe"],
-    });
-
-    let stdout = "";
-    let stderr = "";
-
-    proc.stdout.on("data", (data) => { stdout += data.toString(); });
-    proc.stderr.on("data", (data) => { stderr += data.toString(); });
-
-    proc.on("close", (code) => {
-      if (code === 0) {
-        try {
-          const parsed = JSON.parse(stdout);
-          resolve({ success: true, output: JSON.stringify(parsed) });
-        } catch {
-          resolve({ success: true, output: stdout.trim() });
-        }
-      } else {
-        resolve({ success: false, output: stderr.trim() || `exit code ${code}` });
-      }
-    });
-
-    proc.on("error", (err) => {
-      resolve({ success: false, output: err.message });
-    });
-  });
-}
-
-/**
- * Envia mensagem via `openclaw agent` (síncrono).
- * Usado para agentes que só têm sessionKey.
- */
-function sendViaAgent(sessionKey, message) {
-  return new Promise((resolve) => {
-    const proc = spawn("openclaw", [
-      "agent",
-      "--session-key", sessionKey,
-      "--message", message,
-      "--json",
-    ], {
-      timeout: 35_000,
-      stdio: ["ignore", "pipe", "pipe"],
-    });
-
-    let stdout = "";
-    let stderr = "";
-
-    proc.stdout.on("data", (data) => { stdout += data.toString(); });
-    proc.stderr.on("data", (data) => { stderr += data.toString(); });
-
-    proc.on("close", (code) => {
-      if (code === 0) {
-        resolve({ success: true, output: stdout.trim() });
-      } else {
-        resolve({ success: false, output: stderr.trim() || `exit code ${code}` });
-      }
-    });
-
-    proc.on("error", (err) => {
-      resolve({ success: false, output: err.message });
-    });
-  });
 }
 
 function acquireLock() {
@@ -145,7 +62,7 @@ function releaseLock() {
 
 // ─── Processamento ──────────────────────────────────────────────────
 
-async function processQueue() {
+function archiveQueue() {
   if (!acquireLock()) {
     console.log("[worker] Fila bloqueada por outro processo, pulando...");
     return 0;
@@ -158,68 +75,21 @@ async function processQueue() {
       return 0;
     }
 
-    console.log(`[worker] Processando ${queue.length} mensagem(ns)...`);
-    let processed = 0;
-    let failed = 0;
+    console.log(`[worker] Arquivando ${queue.length} mensagem(ns)...`);
 
     for (const entry of queue) {
       const agent = entry.agent || "desconhecido";
-      const channel = entry.channel;
-      const target = entry.target;
-      const sessionKey = entry.sessionKey;
-      const message = entry.message;
-
-      if (!message) {
-        console.log(`[worker] ⚠️  Entrada inválida: ${JSON.stringify(entry)}`);
-        failed++;
-        continue;
-      }
-
-      // Tenta via channel/target (fire-and-forget) primeiro
-      if (channel && target) {
-        console.log(`[worker] ➡️  [${agent}] message send --channel ${channel} --target ${target}`);
-        const result = await sendViaMessage(channel, target, message);
-        if (result.success) {
-          console.log(`[worker] ✅ [${agent}] Mensagem enviada (msgId: ${result.output.slice(0, 80)})`);
-          processed++;
-        } else {
-          console.log(`[worker] ⚠️  [${agent}] message send falhou: ${result.output.slice(0, 100)}`);
-          console.log(`[worker]    ➡️  Tentando via agent --session-key...`);
-          // Fallback: tenta via agent CLI
-          const fallback = await sendViaAgent(sessionKey, message);
-          if (fallback.success) {
-            console.log(`[worker] ✅ [${agent}] Mensagem enviada via agent CLI`);
-            processed++;
-          } else {
-            console.log(`[worker] ❌ [${agent}] Falha total: ${fallback.output.slice(0, 100)}`);
-            failed++;
-          }
-        }
-      } else if (sessionKey) {
-        // Apenas sessionKey disponível
-        console.log(`[worker] ➡️  [${agent}] agent --session-key ${sessionKey}`);
-        const result = await sendViaAgent(sessionKey, message);
-        if (result.success) {
-          console.log(`[worker] ✅ [${agent}] Mensagem enviada`);
-          processed++;
-        } else {
-          console.log(`[worker] ❌ [${agent}] Falha: ${result.output.slice(0, 100)}`);
-          failed++;
-        }
-      } else {
-        console.log(`[worker] ❌ [${agent}] Sem canal nem sessionKey configurados`);
-        failed++;
-      }
+      const msg = (entry.message || "").slice(0, 60);
+      console.log(`   📝 [${agent}] "${msg}..."`);
     }
 
-    // Arquiva a fila processada
     ensureDir(PROCESSED_DIR);
     const archiveName = `queue-${Date.now()}.jsonl`;
     renameSync(QUEUE_FILE, join(PROCESSED_DIR, archiveName));
-    console.log(`[worker] 📦 Fila arquivada em processed/${archiveName}`);
+    console.log(`[worker] 📦 Arquivado em processed/${archiveName}`);
+    console.log(`[worker] ✅ ${queue.length} mensagens aguardando processamento pelo relay.`);
 
-    console.log(`[worker] ✅ ${processed} enviadas, ${failed} falhas`);
-    return processed;
+    return queue.length;
   } finally {
     releaseLock();
   }
@@ -227,10 +97,20 @@ async function processQueue() {
 
 // ─── Main ───────────────────────────────────────────────────────────
 
-async function main() {
-  console.log("═══════════════════════════════════════");
-  console.log(" 🔌 Neon Webhook — Queue Worker");
-  console.log("═══════════════════════════════════════");
+function main() {
+  if (DUMP_MODE) {
+    const queue = readQueue();
+    if (queue.length === 0) {
+      console.log("📭 Fila vazia.");
+      return;
+    }
+    console.log(`📋 ${queue.length} mensagem(ns) na fila:\n`);
+    queue.forEach((entry, i) => {
+      console.log(`--- [${i + 1}] ---`);
+      console.log(JSON.stringify(entry, null, 2));
+    });
+    return;
+  }
 
   if (CLEAR_MODE) {
     ensureDir(PROCESSED_DIR);
@@ -244,17 +124,20 @@ async function main() {
     return;
   }
 
+  console.log("═══════════════════════════════════════");
+  console.log(" 🔌 Neon Webhook — Queue Archiver");
+  console.log("═══════════════════════════════════════");
+
   if (WATCH_MODE) {
     console.log(`👀 Monitorando: ${QUEUE_FILE}`);
     console.log(`   Polling a cada ${POLL_INTERVAL_MS / 1000}s`);
     console.log("   Pressione Ctrl+C para parar.\n");
-    while (true) {
-      await processQueue();
-      await new Promise((r) => setTimeout(r, POLL_INTERVAL_MS));
-    }
+    setInterval(archiveQueue, POLL_INTERVAL_MS);
+    archiveQueue(); // executa imediatamente na primeira vez
+    return;
   }
 
-  await processQueue();
+  archiveQueue();
 }
 
-main().catch(console.error);
+main();

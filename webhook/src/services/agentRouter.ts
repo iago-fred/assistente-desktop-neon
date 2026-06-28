@@ -9,25 +9,19 @@ export const AGENTS: AgentMap = {
   neon: {
     name: "Neon 👻",
     owner: "Iago",
-    sessionKey: "agent:main:telegram:direct:8829697706",
-    channel: "telegram",
-    target: "8829697706",
+    sessionKey: "agent:main:main",
     description: "Assistente pessoal do Iago",
   },
   emily: {
     name: "Emily 🌸",
     owner: "Jéssica",
-    sessionKey: "agent:main:telegram:direct:1732942559",
-    channel: "telegram",
-    target: "1732942559",
+    sessionKey: "agent:emily:main",
     description: "Assistente pessoal da Jéssica",
   },
   oliver: {
     name: "Oliver 🤖",
     owner: "Iago",
     sessionKey: "agent:main:oliver",
-    channel: "webchat",
-    target: "agent:main:oliver",
     description: "Dev-ops engineer",
   },
 };
@@ -99,8 +93,6 @@ export function queueMessageToAgent(
   appendJsonLine(QUEUE_FILE, {
     agent: agentId,
     sessionKey: agent.sessionKey,
-    channel: agent.channel,
-    target: agent.target,
     message,
     metadata,
     timestamp,

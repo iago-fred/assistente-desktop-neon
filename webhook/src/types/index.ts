@@ -3,8 +3,6 @@ export interface AgentConfig {
   name: string;
   owner: string;
   sessionKey: string;
-  channel: string;
-  target: string;
   description: string;
 }
 
