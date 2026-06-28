@@ -28,6 +28,7 @@ Inspirado nos clássicos *Desktop Pets* (Clippy, Neko, Bonzi Buddy), mas repensa
   - [📅 Roadmap](#-roadmap)
   - [⚙️ Configuração Tauri](#️-configuração-tauri)
   - [🚀 Pré-requisitos e Instalação](#-pré-requisitos-e-instalação)
+    - [🔌 Webhook Server](#-webhook-server)
   - [💡 Licença](#-licença)
   - [🤝 Contribuição](#-contribuição)
   - [👥 Créditos](#-créditos)
@@ -602,6 +603,29 @@ npx tauri build
 ```
 
 O instalador `.msi` (ou `.exe`) será gerado em `src-tauri/target/release/bundle/`.
+
+---
+
+### 🔌 Webhook Server
+
+O projeto inclui um servidor webhook em `webhook/` que faz a ponte entre os apps desktop e os agentes do OpenClaw.
+
+```bash
+# Entre na pasta do webhook
+cd webhook/
+
+# Instale as dependências
+npm install
+
+# Execute em desenvolvimento (com hot-reload)
+npm run dev
+
+# Build para produção
+npm run build
+npm start
+```
+
+O servidor inicia em `http://localhost:3344`. Leia o [README do webhook](webhook/README.md) para detalhes dos endpoints e exemplos de uso.
 
 ---
 
