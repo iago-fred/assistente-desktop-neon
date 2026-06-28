@@ -1,0 +1,20 @@
+services:
+  neon-webhook:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    container_name: neon-webhook
+    ports:
+      - "3344:3344"
+    restart: unless-stopped
+    volumes:
+      - ./logs:/app/logs
+    environment:
+      - NODE_ENV=production
+      - WEBHOOK_PORT=3344
+      - WEBHOOK_HOST=0.0.0.0
+    logging:
+      driver: "json-file"
+      options:
+        max-size: "10m"
+        max-file: "3"

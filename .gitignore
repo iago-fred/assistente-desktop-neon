@@ -5,3 +5,8 @@ src-tauri/target/
 *.log
 .DS_Store
 Thumbs.db
+
+# Webhook
+webhook/node_modules/
+webhook/dist/
+webhook/logs/
