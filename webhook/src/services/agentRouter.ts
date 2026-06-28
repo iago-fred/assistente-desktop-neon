@@ -14,19 +14,19 @@ export const AGENTS: AgentMap = {
   neon: {
     name: "Neon 👻",
     owner: "Iago",
-    sessionKey: getEnv("WEBHOOK_SESSION_KEY", "agent:main:webhook-internal"),
+    sessionKey: getEnv("NEON_SESSION_KEY", "agent:main:webhook-neon"),
     description: "Assistente pessoal do Iago",
   },
   emily: {
     name: "Emily 🌸",
     owner: "Jéssica",
-    sessionKey: getEnv("WEBHOOK_SESSION_KEY", "agent:main:webhook-internal"),
+    sessionKey: getEnv("EMILY_SESSION_KEY", "agent:main:webhook-emily"),
     description: "Assistente pessoal da Jéssica",
   },
   oliver: {
     name: "Oliver 🤖",
     owner: "Iago",
-    sessionKey: getEnv("WEBHOOK_SESSION_KEY", "agent:main:webhook-internal"),
+    sessionKey: getEnv("OLIVER_SESSION_KEY", "agent:main:webhook-oliver"),
     description: "Dev-ops engineer",
   },
 };
