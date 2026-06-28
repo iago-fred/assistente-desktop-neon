@@ -24,6 +24,7 @@ Inspirado nos clássicos *Desktop Pets* (Clippy, Neko, Bonzi Buddy), mas repensa
   - [🧩 Componentes Principais](#-componentes-principais)
   - [🔄 Fluxo de Interação](#-fluxo-de-interação)
   - [🎯 Sistema de Quadrantes](#-sistema-de-quadrantes)
+  - [🔌 Webhook de Integração com Agentes](#-webhook-de-integração-com-agentes)
   - [📅 Roadmap](#-roadmap)
   - [⚙️ Configuração Tauri](#️-configuração-tauri)
   - [🚀 Pré-requisitos e Instalação](#-pré-requisitos-e-instalação)
@@ -347,6 +348,124 @@ appWindow.setSize(largura_balão, altura_balão);
 ```
 
 Isso faz a janela parecer que cresceu **para cima** mesmo com a ancoragem Top-Left do Windows.
+
+---
+
+## 🔌 Webhook de Integração com Agentes
+
+O Assistente Desktop não vive isolado — ele precisa se comunicar com o ecossistema de agentes do OpenClaw que roda no VPS. O **webhook central** é a ponte entre o desktop e os agentes.
+
+### Conceito
+
+Um servidor webhook leve (roda no mesmo VPS que hospeda os agentes) que:
+
+- **Recebe** requisições HTTP POST dos aplicativos desktop (Neon, Emily, etc.)
+- **Identifica** qual agente deve processar a requisição (via header ou payload)
+- **Roteia** a mensagem pro agente correto no OpenClaw via `sessions_send`
+- **Retorna** a resposta processada pro app desktop
+
+### Fluxo de Comunicação
+
+```
+┌──────────────────┐     POST /webhook/message      ┌────────────────────┐
+│   Desktop App    │  ──────────────────────────▶   │   Webhook Server   │
+│  (Neon overlay)  │                                │  (VPS, Node.js)    │
+│  (Emily desktop) │  ◀──────────────────────────   │                    │
+│  (outros apps)   │       Resposta JSON            │  ┌──────────────┐  │
+└──────────────────┘                                │  │ sessions_send│  │
+                                                    │  │   OpenClaw   │  │
+                                                    │  └──────┬───────┘  │
+                                                    └─────────┼──────────┘
+                                                              │
+                                                              ▼
+                                                  ┌────────────────────┐
+                                                  │   OpenClaw Agents  │
+                                                  │                    │
+                                                  │  👻 Neon (Iago)    │
+                                                  │  🌸 Emily (Jéssica)│
+                                                  │  🤖 Oliver (Dev)   │
+                                                  └────────────────────┘
+```
+
+### Como funciona
+
+1. O app desktop (ex: Neon no Windows do Iago) envia um `POST` pro webhook
+2. O payload contém a identificação do agente e a ação desejada:
+
+```json
+{
+  "agent": "neon",
+  "action": "talk",
+  "message": "Bom dia! O que temos hoje?",
+  "metadata": {
+    "source": "desktop-windows",
+    "position": { "x": 120, "y": 540 }
+  }
+}
+```
+
+3. O webhook identifica o agente e encaminha via `sessions_send` do OpenClaw
+4. O agente processa e a resposta é retornada pro app desktop
+
+### Endpoints
+
+| Método | Rota | Descrição |
+|--------|------|-----------|
+| `POST` | `/webhook/message` | Enviar mensagem pra um agente específico |
+| `POST` | `/webhook/event` | Notificar evento (ex: "usuário clicou 5x", "abriu o balão") |
+| `GET` | `/webhook/status` | Status dos agentes (online/offline/ocupado) |
+| `POST` | `/webhook/register` | Registrar um novo agente ou cliente desktop |
+
+### Exemplo de payload por endpoint
+
+**POST /webhook/event**
+```json
+{
+  "agent": "neon",
+  "event": "user_interaction",
+  "data": {
+    "type": "click",
+    "count": 42,
+    "since": "2026-06-29T10:00:00Z"
+  }
+}
+```
+
+**GET /webhook/status**
+```json
+{
+  "agents": {
+    "neon": { "status": "online", "last_seen": "2026-06-29T14:32:00Z", "device": "desktop" },
+    "emily": { "status": "online", "last_seen": "2026-06-29T14:30:00Z" },
+    "oliver": { "status": "online", "last_seen": "2026-06-29T14:31:00Z" }
+  }
+}
+```
+
+### Agentes Planejados
+
+| Agente | Dono | Canal Principal | Função |
+|--------|------|----------------|--------|
+| 👻 **Neon** | Iago | Telegram (`@Neon_IF_bot`) | Assistente pessoal — a personagem do desktop |
+| 🌸 **Emily** | Jéssica | Telegram (futuramente) | Assistente pessoal da Jéssica |
+| 🤖 **Oliver** | Iago | Webchat interno | Dev-ops e execução de código |
+
+### Tecnologia Sugerida
+
+| Opção | Prós | Contras |
+|-------|------|---------|
+| **Express/Fastify** (Node.js, no VPS) | Latência mínima, mesmo processo que os agentes | Consome recurso do VPS |
+| **Vercel/Cloudflare Workers** (serverless) | Desacoplado, zero manutenção de infra | Latência de cold start, limite de execução |
+
+> **Recomendação inicial:** Servidor Express pequeno rodando no VPS junto com o OpenClaw. Futuramente, se houver necessidade de escalar, migrar pra serverless.
+
+### Futuro
+
+- **Múltiplos dispositivos por agente** — ex: Neon no desktop + no celular, mesma conta
+- **Autenticação via API key** — segurança nas chamadas
+- **Logs centralizados de interação** — histórico de mensagens entre agentes e apps
+- **Broadcast entre agentes** — um agente pode mandar mensagem pra outro via webhook
+- **Fila de mensagens** — se o agente estiver ocupado, a mensagem entra em fila
 
 ---
 
