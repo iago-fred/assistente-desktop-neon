@@ -1,4 +1,3 @@
-import { spawn } from "node:child_process";
 import { writeFileSync, existsSync, mkdirSync } from "node:fs";
 import { join, dirname } from "node:path";
 import { fileURLToPath } from "node:url";
@@ -8,30 +7,37 @@ import type { AgentConfig, AgentMap, AgentStatus } from "../types/index.js";
 
 export const AGENTS: AgentMap = {
   neon: {
-    name: "Neon",
+    name: "Neon 👻",
     owner: "Iago",
     sessionKey: "agent:main:telegram:direct:8829697706",
+    channel: "telegram",
+    target: "8829697706",
     description: "Assistente pessoal do Iago",
   },
   emily: {
-    name: "Emily",
+    name: "Emily 🌸",
     owner: "Jéssica",
     sessionKey: "agent:main:telegram:direct:1732942559",
+    channel: "telegram",
+    target: "1732942559",
     description: "Assistente pessoal da Jéssica",
   },
   oliver: {
-    name: "Oliver",
+    name: "Oliver 🤖",
     owner: "Iago",
     sessionKey: "agent:main:oliver",
+    channel: "webchat",
+    target: "agent:main:oliver",
     description: "Dev-ops engineer",
   },
 };
 
-// ─── Log de Eventos ─────────────────────────────────────────────────
+// ─── Diretórios ─────────────────────────────────────────────────────
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
 const LOG_DIR = join(__dirname, "..", "..", "logs");
 const EVENT_LOG = join(LOG_DIR, "events.jsonl");
+const QUEUE_FILE = join(LOG_DIR, "message_queue.jsonl");
 
 function ensureLogDir(): void {
   if (!existsSync(LOG_DIR)) {
@@ -39,119 +45,92 @@ function ensureLogDir(): void {
   }
 }
 
-function logEventToFile(event: Record<string, unknown>): void {
+function appendJsonLine(filePath: string, data: Record<string, unknown>): void {
   try {
     ensureLogDir();
-    writeFileSync(EVENT_LOG, JSON.stringify(event) + "\n", { flag: "a" });
+    writeFileSync(filePath, JSON.stringify(data) + "\n", { flag: "a" });
   } catch {
-    // Silencia erro de escrita — não derruba o servidor por causa de log
+    // Silencia erro de escrita
   }
 }
 
-// ─── Roteamento de Mensagens ────────────────────────────────────────
+// ─── Validação ──────────────────────────────────────────────────────
 
-/**
- * Valida se um agentId existe na configuração.
- */
 export function validateAgent(agentId: string): AgentConfig | null {
   return AGENTS[agentId] ?? null;
 }
 
+// ─── Roteamento de Mensagens (Fire-and-Forget) ──────────────────────
+
 /**
- * Envia uma mensagem para um agente via OpenClaw CLI.
- * Usa `openclaw agent --session-key <key> --message "<text>"`.
+ * Enfileira uma mensagem para um agente.
+ *
+ * A mensagem é escrita em `logs/message_queue.jsonl` no formato JSON Lines.
+ * Um script companion (worker) ou o próprio agente OpenClaw processa a fila
+ * e encaminha a mensagem via sessions_send.
+ *
+ * Estratégia:
+ *  1. Log do evento
+ *  2. Escreve na fila de mensagens
+ *  3. Retorna sucesso imediatamente (não bloqueia)
  */
-export function routeMessageToAgent(
+export function queueMessageToAgent(
   agentId: string,
   message: string,
   metadata?: Record<string, unknown>,
-): Promise<{ success: boolean; output: string }> {
-  return new Promise((resolve) => {
-    const agent = validateAgent(agentId);
-    if (!agent) {
-      resolve({ success: false, output: `Agente '${agentId}' não encontrado` });
-      return;
-    }
+): { success: boolean; output: string } {
+  const agent = validateAgent(agentId);
+  if (!agent) {
+    return { success: false, output: `Agente '${agentId}' não encontrado` };
+  }
 
-    // Log do evento independente do resultado
-    logEventToFile({
-      type: "message",
-      agent: agentId,
-      message,
-      metadata,
-      timestamp: new Date().toISOString(),
-    });
+  const timestamp = new Date().toISOString();
 
-    // Tenta enviar via OpenClaw CLI
-    const proc = spawn(
-      "openclaw",
-      [
-        "agent",
-        "--session-key",
-        agent.sessionKey,
-        "--message",
-        message,
-        "--json",
-      ],
-      {
-        timeout: 30_000,
-        env: { ...process.env, HOME: process.env.HOME },
-      },
-    );
-
-    let stdout = "";
-    let stderr = "";
-
-    proc.stdout.on("data", (data: Buffer) => {
-      stdout += data.toString();
-    });
-
-    proc.stderr.on("data", (data: Buffer) => {
-      stderr += data.toString();
-    });
-
-    proc.on("close", (code) => {
-      if (code === 0) {
-        resolve({ success: true, output: stdout.trim() });
-      } else {
-        resolve({
-          success: false,
-          output: stderr.trim() || `Código de saída: ${code}`,
-        });
-      }
-    });
-
-    proc.on("error", (err) => {
-      resolve({
-        success: false,
-        output: `Erro ao executar OpenClaw CLI: ${err.message}`,
-      });
-    });
+  // Log do evento
+  appendJsonLine(EVENT_LOG, {
+    type: "message",
+    agent: agentId,
+    message,
+    metadata,
+    timestamp,
   });
+
+  // Enfileira a mensagem
+  appendJsonLine(QUEUE_FILE, {
+    agent: agentId,
+    sessionKey: agent.sessionKey,
+    channel: agent.channel,
+    target: agent.target,
+    message,
+    metadata,
+    timestamp,
+    status: "queued",
+  });
+
+  return {
+    success: true,
+    output: `Mensagem enfileirada para ${agent.name}`,
+  };
 }
 
-/**
- * Registra um evento no log (sem encaminhar pra agente).
- */
+// ─── Eventos ────────────────────────────────────────────────────────
+
 export function logEvent(
   agentId: string,
   event: string,
   data?: Record<string, unknown>,
 ): void {
-  const entry = {
+  appendJsonLine(EVENT_LOG, {
     type: "event",
     agent: agentId,
     event,
     data,
     timestamp: new Date().toISOString(),
-  };
-
-  logEventToFile(entry);
+  });
 }
 
-/**
- * Retorna o status atual de todos os agentes.
- */
+// ─── Status dos Agentes ─────────────────────────────────────────────
+
 export function getAgentsStatus(): Record<string, AgentStatus> {
   const now = new Date().toISOString();
   const statuses: Record<string, AgentStatus> = {};

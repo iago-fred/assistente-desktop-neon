@@ -2,7 +2,7 @@ import type { FastifyRequest, FastifyReply } from "fastify";
 import type { MessagePayload, ApiResponse } from "../types/index.js";
 import {
   validateAgent,
-  routeMessageToAgent,
+  queueMessageToAgent,
 } from "../services/agentRouter.js";
 
 export async function handleMessage(
@@ -34,8 +34,8 @@ export async function handleMessage(
     return;
   }
 
-  // Roteia a mensagem
-  const result = await routeMessageToAgent(agent, message, metadata);
+  // Enfileira a mensagem (fire-and-forget)
+  const result = queueMessageToAgent(agent, message, metadata);
 
   if (result.success) {
     const res: ApiResponse = {
