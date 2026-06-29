@@ -1,7 +1,7 @@
 /* ============================================
    App — Root component
    Orchestrates the Neon character, drag behavior,
-   speech bubble, and webhook communication.
+   speech bubble overlay, and webhook communication.
    ============================================ */
 
 import { useState, useCallback, useEffect, useRef } from "react";
@@ -23,8 +23,8 @@ const PERSONAGEM_W = 120;
 const PERSONAGEM_H = 150;
 const BALAO_W = 320;
 const BALAO_H = 250;
-const WEBHOOK_URL = "http://100.125.136.29:3344/webhook/message";
 const GAP = 8;
+const WEBHOOK_URL = "http://100.125.136.29:3344/webhook/message";
 
 const IDLE_TIMEOUT_MS = 5000;
 
@@ -42,10 +42,6 @@ export default function App() {
   const [carregando, setCarregando] = useState(false);
   const [erro, setErro] = useState<string | undefined>();
   const [winPos, setWinPos] = useState({ x: 100, y: 100 });
-  const [windowSize, setWindowSize] = useState({
-    w: PERSONAGEM_W,
-    h: PERSONAGEM_H,
-  });
   const idleTimerRef = useRef<number | null>(null);
   const hasLoadedRef = useRef(false);
 
@@ -53,8 +49,8 @@ export default function App() {
   const { containerStyle, recalcular } = useQuadrante({
     winX: winPos.x,
     winY: winPos.y,
-    winW: windowSize.w,
-    winH: windowSize.h,
+    winW: PERSONAGEM_W,
+    winH: PERSONAGEM_H,
   });
 
   // ── Load saved position ──────────────
@@ -90,35 +86,6 @@ export default function App() {
     }, 500);
     return () => clearTimeout(timer);
   }, [winPos]);
-
-  // ── Position sync with Tauri ─────────
-  const updateWindowPosition = useCallback(async (x: number, y: number) => {
-    setWinPos({ x, y });
-    if (!isTauri()) return;
-    try {
-      const { getCurrentWindow, PhysicalPosition } = await import(
-        "@tauri-apps/api/window"
-      );
-      const appWindow = getCurrentWindow();
-      await appWindow.setPosition(new PhysicalPosition(x, y));
-    } catch {
-      // ignore
-    }
-  }, []);
-
-  const updateWindowSize = useCallback(async (w: number, h: number) => {
-    setWindowSize({ w, h });
-    if (!isTauri()) return;
-    try {
-      const { getCurrentWindow, PhysicalSize } = await import(
-        "@tauri-apps/api/window"
-      );
-      const appWindow = getCurrentWindow();
-      await appWindow.setSize(new PhysicalSize(w, h));
-    } catch {
-      // ignore
-    }
-  }, []);
 
   // ── Idle timer ───────────────────────
   const resetIdleTimer = useCallback(() => {
@@ -176,57 +143,39 @@ export default function App() {
     }
   }, [winPos]);
 
-  // ── Click handler ────────────────────
+  // ── Click handler (show bubble overlay) ─
   const handleClick = useCallback(() => {
     setEstado("talking");
     setBalaoAberto(true);
     recalcular();
-
-    // Expand window for bubble
-    const expandW = PERSONAGEM_W + BALAO_W + GAP;
-    const expandH = Math.max(PERSONAGEM_H, BALAO_H);
-    updateWindowSize(expandW, expandH);
-
-    // If bottom-right/bottom-left, reposition
-    const screenW = window.screen.availWidth;
-    const screenH = window.screen.availHeight;
-    const centerX = screenW / 2;
-    const centerY = screenH / 2;
-    const janelaCenterX = winPos.x + PERSONAGEM_W / 2;
-    const janelaCenterY = winPos.y + PERSONAGEM_H / 2;
-
-    if (janelaCenterX >= centerX && janelaCenterY >= centerY) {
-      // Bottom-right: move window left+up
-      updateWindowPosition(
-        winPos.x - BALAO_W - GAP,
-        winPos.y - BALAO_H + PERSONAGEM_H,
-      );
-    } else if (janelaCenterX < centerX && janelaCenterY >= centerY) {
-      // Bottom-left: move window up
-      updateWindowPosition(winPos.x, winPos.y - BALAO_H + PERSONAGEM_H);
-    } else if (janelaCenterX >= centerX && janelaCenterY < centerY) {
-      updateWindowPosition(winPos.x - BALAO_W - GAP, winPos.y);
-    }
-
     enviarMensagem();
     resetIdleTimer();
-  }, [
-    recalcular,
-    updateWindowSize,
-    updateWindowPosition,
-    winPos,
-    enviarMensagem,
-    resetIdleTimer,
-  ]);
+  }, [recalcular, enviarMensagem, resetIdleTimer]);
 
   // ── Drag handlers ────────────────────
   const handleDragStart = useCallback(() => {
     setEstado("drag");
     resetIdleTimer();
+    // Start native Tauri window drag
+    if (isTauri()) {
+      import("@tauri-apps/api/window").then(({ getCurrentWindow }) => {
+        getCurrentWindow().startDragging().catch(() => {
+          // ignore in browser dev / unsupported
+        });
+      });
+    }
   }, [resetIdleTimer]);
 
   const handleDragEnd = useCallback(() => {
     setEstado("idle");
+    // Sync position from Tauri after drag completes
+    if (isTauri()) {
+      import("@tauri-apps/api/window").then(({ getCurrentWindow }) => {
+        getCurrentWindow().outerPosition().then((p) => {
+          setWinPos({ x: p.x, y: p.y });
+        });
+      });
+    }
   }, []);
 
   const { onMouseDown, onMouseMove, onMouseUp } = useDrag({
@@ -236,42 +185,6 @@ export default function App() {
     onDragEnd: handleDragEnd,
   });
 
-  // ── Tauri drag region support ────────
-  useEffect(() => {
-    let cleanup: (() => void) | undefined;
-
-    const setupDrag = async () => {
-      if (!isTauri()) return;
-      try {
-        const { getCurrentWindow } = await import("@tauri-apps/api/window");
-        const appWindow = getCurrentWindow();
-
-        const unlisten = await appWindow.onDragDropEvent((event) => {
-          if (event.payload.type === "over") {
-            setEstado("drag");
-          } else if (
-            event.payload.type === "drop" ||
-            event.payload.type === "leave"
-          ) {
-            setEstado("idle");
-            appWindow.outerPosition().then((p) => {
-              setWinPos({ x: p.x, y: p.y });
-            });
-          }
-        });
-
-        cleanup = unlisten;
-      } catch {
-        // browser dev
-      }
-    };
-
-    setupDrag();
-    return () => {
-      cleanup?.();
-    };
-  }, []);
-
   // ── Close bubble ─────────────────────
   const handleFecharBalao = useCallback(() => {
     setBalaoAberto(false);
@@ -279,8 +192,7 @@ export default function App() {
     setLinhaAtual(0);
     setErro(undefined);
     setEstado("idle");
-    updateWindowSize(PERSONAGEM_W, PERSONAGEM_H);
-  }, [updateWindowSize]);
+  }, []);
 
   // ── Advance speech ───────────────────
   const handleAvancarFala = useCallback(() => {
@@ -304,6 +216,26 @@ export default function App() {
     }
   }, [estado]);
 
+  // ── Bubble overlay positioning ───────
+  const bubbleStyle: React.CSSProperties = (() => {
+    const flexDir = containerStyle.flexDirection ?? "column";
+    const align = containerStyle.alignItems ?? "flex-start";
+
+    // Top anchor: if column-reverse, bubble goes ABOVE the character
+    const top =
+      flexDir === "column-reverse" ? -(BALAO_H + GAP) : PERSONAGEM_H + GAP;
+
+    // Horizontal anchor: if right-aligned, bubble sticks out to the left
+    const left =
+      align === "flex-end" ? PERSONAGEM_W - BALAO_W - GAP : 0;
+
+    return {
+      position: "absolute" as const,
+      top,
+      left: Math.max(left, 0),
+    };
+  })();
+
   // ── Cleanup idle timer ───────────────
   useEffect(() => {
     return () => {
@@ -317,11 +249,10 @@ export default function App() {
   return (
     <div
       style={{
-        width: "100%",
-        height: "100%",
-        display: "flex",
-        ...containerStyle,
-        gap: GAP,
+        position: "relative",
+        width: PERSONAGEM_W,
+        height: PERSONAGEM_H,
+        overflow: "visible",
       }}
       onMouseMove={onMouseMove}
       onMouseUp={onMouseUp}
@@ -331,20 +262,23 @@ export default function App() {
       <Personagem
         estado={estado}
         onMouseDown={onMouseDown}
+        onClick={handleClick}
         onMouseEnter={handleMouseEnter}
         onMouseLeave={handleMouseLeave}
       />
 
-      {/* Speech bubble */}
+      {/* Speech bubble overlay */}
       {balaoAberto && (
-        <BalaoDialogo
-          falas={falas}
-          carregando={carregando}
-          erro={erro}
-          onFechar={handleFecharBalao}
-          linhaAtual={linhaAtual}
-          onAvancar={handleAvancarFala}
-        />
+        <div style={bubbleStyle}>
+          <BalaoDialogo
+            falas={falas}
+            carregando={carregando}
+            erro={erro}
+            onFechar={handleFecharBalao}
+            linhaAtual={linhaAtual}
+            onAvancar={handleAvancarFala}
+          />
+        </div>
       )}
     </div>
   );

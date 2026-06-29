@@ -37,7 +37,6 @@ export function useDrag(options: UseDragOptions = {}): UseDragReturn {
 
   const onMouseDown = useCallback(
     (e: React.MouseEvent) => {
-      e.preventDefault();
       startPosRef.current = { x: e.clientX, y: e.clientY };
       isDraggingRef.current = false;
       setIsDragging(false);

@@ -11,6 +11,7 @@ import "./Personagem.css";
 interface PersonagemProps {
   estado: EstadoAnimacao;
   onMouseDown: (e: React.MouseEvent) => void;
+  onClick?: () => void;
   onMouseEnter?: () => void;
   onMouseLeave?: () => void;
 }
@@ -18,6 +19,7 @@ interface PersonagemProps {
 export function Personagem({
   estado,
   onMouseDown,
+  onClick,
   onMouseEnter,
   onMouseLeave,
 }: PersonagemProps) {
@@ -26,7 +28,9 @@ export function Personagem({
   return (
     <div
       className={`personagem-wrapper estado-${estado} ${isHidden ? "personagem-hidden" : ""}`}
+      data-tauri-drag-region
       onMouseDown={onMouseDown}
+      onClick={onClick}
       onMouseEnter={onMouseEnter}
       onMouseLeave={onMouseLeave}
       role="img"
