@@ -38,10 +38,21 @@ export async function handleMessage(
   const result = await routeMessageToAgent(agent, message, metadata);
 
   if (result.success) {
+    // Extrair tom do final da resposta
+    let tone: string | undefined;
+    let cleanResponse = result.response || '';
+
+    const toneMatch = cleanResponse.match(/--tom:\s*(\w+)\s*$/);
+    if (toneMatch) {
+      tone = toneMatch[1];
+      cleanResponse = cleanResponse.replace(/--tom:\s*\w+\s*$/, '').trim();
+    }
+
     const res: ApiResponse = {
       status: "sent",
       agent: agentConfig.name,
-      response: result.response,
+      response: cleanResponse,
+      tone,
       timestamp: new Date().toISOString(),
     };
     reply.code(200).send(res);

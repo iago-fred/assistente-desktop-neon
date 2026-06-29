@@ -33,6 +33,7 @@ export interface ApiResponse {
   status: "sent" | "logged" | "error" | "registered";
   agent?: string;
   response?: string;
+  tone?: string;
   timestamp: string;
   error?: string;
 }
