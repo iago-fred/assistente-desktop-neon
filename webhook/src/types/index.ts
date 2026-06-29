@@ -28,12 +28,17 @@ export interface RegisterPayload {
   endpoint?: string;
 }
 
+/** Um parágrafo da resposta, com tom individual para o avatar */
+export interface Paragraph {
+  text: string;
+  tone: string;
+}
+
 /** Resposta padronizada da API */
 export interface ApiResponse {
   status: "sent" | "logged" | "error" | "registered";
   agent?: string;
-  response?: string;
-  tone?: string;
+  response?: Paragraph[];
   timestamp: string;
   error?: string;
 }

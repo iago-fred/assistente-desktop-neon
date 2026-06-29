@@ -1,9 +1,28 @@
 import type { FastifyRequest, FastifyReply } from "fastify";
-import type { MessagePayload, ApiResponse } from "../types/index.js";
+import type { MessagePayload, ApiResponse, Paragraph } from "../types/index.js";
 import {
   validateAgent,
   routeMessageToAgent,
 } from "../services/agentRouter.js";
+
+function parseResponseWithTone(raw: string): Paragraph[] {
+  if (!raw) return [];
+
+  // Divide por parágrafos (dupla quebra de linha)
+  const paragraphs = raw.split(/\n\n+/).filter((p) => p.trim().length > 0);
+
+  return paragraphs.map((p) => {
+    const trimmed = p.trim();
+    const match = trimmed.match(/--tom:\s*(\w+)\s*$/);
+    if (match) {
+      return {
+        text: trimmed.replace(/--tom:\s*\w+\s*$/, '').trim(),
+        tone: match[1],
+      };
+    }
+    return { text: trimmed, tone: 'neutro' };
+  });
+}
 
 export async function handleMessage(
   request: FastifyRequest<{ Body: MessagePayload }>,
@@ -38,21 +57,12 @@ export async function handleMessage(
   const result = await routeMessageToAgent(agent, message, metadata);
 
   if (result.success) {
-    // Extrair tom do final da resposta
-    let tone: string | undefined;
-    let cleanResponse = result.response || '';
-
-    const toneMatch = cleanResponse.match(/--tom:\s*(\w+)\s*$/);
-    if (toneMatch) {
-      tone = toneMatch[1];
-      cleanResponse = cleanResponse.replace(/--tom:\s*\w+\s*$/, '').trim();
-    }
+      const paragraphs = parseResponseWithTone(result.response || '');
 
     const res: ApiResponse = {
       status: "sent",
       agent: agentConfig.name,
-      response: cleanResponse,
-      tone,
+      response: paragraphs,
       timestamp: new Date().toISOString(),
     };
     reply.code(200).send(res);
