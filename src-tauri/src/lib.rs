@@ -151,7 +151,7 @@ pub fn run() {
                 })
                 .build(app)?;
 
-            tray::set_tray_handle(app, _tray);
+            tray::set_tray_handle(app.handle(), _tray);
             Ok(())
         })
         .run(tauri::generate_context!())
