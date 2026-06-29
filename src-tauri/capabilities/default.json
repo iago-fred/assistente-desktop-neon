@@ -1,7 +1,9 @@
 {
   "identifier": "default",
   "description": "Default capabilities for Neon Desktop",
-  "windows": ["main"],
+  "windows": [
+    "main"
+  ],
   "permissions": [
     "core:default",
     "core:window:default",
@@ -23,9 +25,10 @@
     "fs:default",
     "fs:allow-read-text-file",
     "fs:allow-write-text-file",
-    "fs:allow-app-data-read",
-    "fs:allow-app-data-write",
-    "fs:scope-app-data-recursive",
+    "fs:allow-appdata-read",
+    "fs:allow-appdata-write",
+    "fs:scope-appdata",
+    "fs:scope-appdata-recursive",
     "shell:default"
   ]
 }
