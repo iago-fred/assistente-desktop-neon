@@ -5,22 +5,88 @@ import {
   routeMessageToAgent,
 } from "../services/agentRouter.js";
 
+// Mapa de emoji → tom
+const EMOJI_TONE_MAP: Record<string, string> = {
+  // animado
+  '😄': 'animado', '🤩': 'animado', '🎉': 'animado', '🔥': 'animado',
+  '🚀': 'animado', '✨': 'animado', '🎊': 'animado', '🥳': 'animado',
+  '💥': 'animado', '⭐': 'animado', '🌟': 'animado', '💫': 'animado',
+  // feliz
+  '😊': 'feliz', '😁': 'feliz', '😃': 'feliz', '😸': 'feliz',
+  '💙': 'feliz', '💕': 'feliz', '🥰': 'feliz', '❤️': 'feliz',
+  '💖': 'feliz', '💜': 'feliz', '😍': 'feliz', '😘': 'feliz',
+  // caloroso
+  '🫶': 'caloroso', '🤗': 'caloroso', '☀️': 'caloroso', '🌅': 'caloroso',
+  '🌸': 'caloroso', '🌺': 'caloroso',
+  // pensativo
+  '🤔': 'pensativo', '🧐': 'pensativo', '💭': 'pensativo',
+  '🤷': 'pensativo', '🤷\u200d♂️': 'pensativo', '🤷\u200d♀️': 'pensativo',
+  // brincalhao
+  '😅': 'brincalhao', '😬': 'brincalhao', '🙃': 'brincalhao',
+  '😜': 'brincalhao', '🤪': 'brincalhao', '😏': 'brincalhao',
+  '😎': 'brincalhao', '🕶️': 'brincalhao',
+  // triste
+  '😢': 'triste', '😞': 'triste', '💔': 'triste', '😭': 'triste',
+  '😩': 'triste', '😤': 'triste', '😠': 'triste', '💢': 'triste',
+  // alerta
+  '⚠️': 'alerta', '❗': 'alerta', '🚨': 'alerta', '🔴': 'alerta',
+  '🛑': 'alerta', '❌': 'alerta', '🚫': 'alerta',
+};
+
+// Detecta o tom emocional de um parágrafo via emoji + regras textuais
+function detectTone(paragraph: string): string {
+  const text = paragraph.trim();
+  if (!text) return 'neutro';
+
+  // Passo 1: Verificar emojis (do fim pro começo — último emoji define tom)
+  for (const char of [...text].reverse()) {
+    const tone = EMOJI_TONE_MAP[char];
+    if (tone) return tone;
+  }
+
+  // Passo 2: Regras de texto
+  const lower = text.toLowerCase();
+
+  // Alerta — palavras de urgência/perigo
+  if (/\b(atenção|cuidado|importante|urgente|perigo)\b/i.test(text)) return 'alerta';
+
+  // Animado — exclamação dupla ou mais
+  if (/!{2,}$/.test(text.trim())) return 'animado';
+
+  // Brincalhao — risadas, zoação
+  if (/\b(kkk|rsrs|haha|lol|zoa(ndo|ção)?|troll(ei)?|zuera)\b/i.test(text)) return 'brincalhao';
+
+  // Triste — lamentação, frustração
+  if (/\b(que pena|triste|infelizmente|putz|poxa|droga|que merda)\b/i.test(lower)) return 'triste';
+
+  // Caloroso — agradecimento, afeto
+  if (/\b(obrigado|brigado|disponha|tamo junto|tmj|valeu|agradeço)\b/i.test(lower)) return 'caloroso';
+
+  // Feliz — entusiasmo positivo
+  if (/\b(amo|adoro|ótimo|maravilha|perfeito|show|baita)\b/i.test(text)) return 'feliz';
+
+  // Pensativo — dúvida, interrogação
+  if (/\?$/.test(text.trim()) || /\b(talvez|será|não sei|nao sei|quem sabe|depende)\b/i.test(lower)) return 'pensativo';
+
+  // Animado (termina com exclamação simples)
+  if (/!$/.test(text.trim())) return 'animado';
+
+  return 'neutro';
+}
+
 function parseResponseWithTone(raw: string): Paragraph[] {
-  if (!raw) return [];
+  if (!raw || !raw.trim()) return [];
 
   // Divide por parágrafos (dupla quebra de linha)
-  const paragraphs = raw.split(/\n\n+/).filter((p) => p.trim().length > 0);
+  const paragraphs = raw.split(/\n\n+/).filter(p => p.trim());
 
-  return paragraphs.map((p) => {
-    const trimmed = p.trim();
-    const match = trimmed.match(/--tom:\s*(\w+)\s*$/);
-    if (match) {
-      return {
-        text: trimmed.replace(/--tom:\s*\w+\s*$/, '').trim(),
-        tone: match[1],
-      };
-    }
-    return { text: trimmed, tone: 'neutro' };
+  return paragraphs.map(p => {
+    // Remove marcador manual --tom: se existir (compatibilidade com mensagens antigas)
+    const cleanText = p.trim().replace(/--tom:\s*\w+\s*$/g, '').trim();
+    return {
+      text: cleanText,
+      tone: detectTone(cleanText),
+    };
   });
 }
 
