@@ -1,0 +1,52 @@
+/* ============================================
+   Neon Desktop — Global Styles
+   Transparent overlay, no selection, no scroll
+   ============================================ */
+
+*,
+*::before,
+*::after {
+  margin: 0;
+  padding: 0;
+  box-sizing: border-box;
+}
+
+html,
+body {
+  width: 100%;
+  height: 100%;
+  overflow: hidden;
+  background: transparent !important;
+  user-select: none;
+  -webkit-user-select: none;
+  cursor: default;
+  font-family:
+    "Segoe UI",
+    system-ui,
+    -apple-system,
+    sans-serif;
+  color: #e0e0e0;
+}
+
+#root {
+  width: 100%;
+  height: 100%;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: transparent !important;
+}
+
+/* Prevent any drag-select on images or elements */
+img,
+svg,
+canvas {
+  -webkit-user-drag: none;
+  user-select: none;
+  pointer-events: none;
+}
+
+/* Scrollbar hidden everywhere */
+::-webkit-scrollbar {
+  display: none;
+}
