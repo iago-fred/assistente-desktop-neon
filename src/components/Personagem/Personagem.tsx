@@ -4,7 +4,6 @@
    state-driven animations and event handlers.
    ============================================ */
 
-import React from "react";
 import Base from "./Base";
 import type { EstadoAnimacao } from "@/utils/animacoes";
 import "./Personagem.css";
