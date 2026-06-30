@@ -6,10 +6,9 @@
    ============================================ */
 
 .personagem-wrapper {
-  width: 120px;
-  height: 150px;
   cursor: grab;
   display: flex;
+  flex-direction: column;
   align-items: center;
   justify-content: center;
   transition: opacity 0.3s ease;
@@ -25,47 +24,24 @@
   pointer-events: none;
 }
 
-.personagem-svg {
-  width: 100%;
-  height: 100%;
-  overflow: visible;
-}
+
 
 /* ── State animations ─────────────────── */
 
 /* IDLE — gentle floating, soft breathing */
-.estado-idle .personagem-corpo {
-  animation: float-idle 3s ease-in-out infinite;
-}
-.estado-idle .personagem-olhos {
-  animation: blink 4s ease-in-out infinite;
-}
+/* idle — animations handled by Base (styled-components) */
 
 /* HOVER — curious tilt, eyes track */
-.estado-hover .personagem-corpo {
-  animation: float-idle 2s ease-in-out infinite;
-}
-.estado-hover .personagem-olhos {
-  animation: look-around 3s ease-in-out infinite;
-}
+/* hover — animations handled by Base (styled-components) */
 
 /* DRAG — being pulled, squish */
-.estado-drag .personagem-corpo {
+.estado-drag .personagem-wrapper {
   animation: drag-squish 0.3s ease-in-out infinite alternate;
-}
-.estado-drag .personagem-olhos {
-  animation: blink-fast 1s ease-in-out infinite;
 }
 
 /* TALKING — excited bounce */
-.estado-talking .personagem-corpo {
+.estado-talking .personagem-wrapper {
   animation: talk-bounce 0.6s ease-in-out infinite;
-}
-.estado-talking .personagem-olhos {
-  animation: blink 3s ease-in-out infinite;
-}
-.estado-talking .personagem-touca {
-  animation: talk-bounce 0.6s ease-in-out infinite reverse;
 }
 
 /* ── Keyframes ────────────────────────── */
