@@ -4,7 +4,7 @@
    big eyes, tattoos, wave bottom, and glow effects.
    ============================================ */
 
-import styled, { keyframes } from "styled-components";
+import styled, { keyframes, css } from "styled-components";
 import type { EstadoAnimacao } from "@/utils/animacoes";
 
 // ── KEYFRAMES ──────────────────────────────
@@ -42,24 +42,12 @@ const Wrapper = styled.div<{ $animState: EstadoAnimacao }>`
   width: 160px;
   height: 220px;
 
-  ${({ $animState }) =>
-    $animState === "talking"
-      ? `animation: ${float} 1.2s ease-in-out infinite;`
-      : $animState === "drag"
-        ? `
-      animation: none;
-      transform: scale(0.97, 1.03);
-    `
-        : $animState === "hidden"
-          ? `
-      animation: none;
-      opacity: 0;
-      pointer-events: none;
-      transition: opacity 0.3s ease;
-    `
-          : `
-      animation: ${float} 3s ease-in-out infinite;
-    `}
+  ${({ $animState }) => {
+    if ($animState === "talking") return css`animation: ${float} 1.2s ease-in-out infinite;`;
+    if ($animState === "drag") return css`animation: none; transform: scale(0.97, 1.03);`;
+    if ($animState === "hidden") return css`animation: none; opacity: 0; pointer-events: none; transition: opacity 0.3s ease;`;
+    return css`animation: ${float} 3s ease-in-out infinite;`;
+  }}
 
   background: #a6f6f8;
   border-radius: 80px 80px 0 0;
@@ -175,9 +163,7 @@ const EyeContainer = styled.div<{ $animState: EstadoAnimacao }>`
 
   ${({ $animState }) =>
     $animState === "hover" &&
-    `
-    animation: ${lookAround} 3s ease-in-out infinite;
-  `}
+    css`animation: ${lookAround} 3s ease-in-out infinite;`}
 `;
 
 const Eye = styled.div`
@@ -329,13 +315,8 @@ const Shadow = styled.div<{ $animState: EstadoAnimacao }>`
 
   ${({ $animState }) =>
     $animState === "hidden"
-      ? `
-    animation: none;
-    opacity: 0;
-  `
-      : `
-    animation: ${shadowScale} 3s ease-in-out infinite;
-  `}
+      ? css`animation: none; opacity: 0;`
+      : css`animation: ${shadowScale} 3s ease-in-out infinite;`}
 `;
 
 // ── COMPONENTE PRINCIPAL ───────────────
