@@ -19,8 +19,8 @@ interface WebhookResponse {
 }
 
 // ── Config ───────────────────────────────
-const PERSONAGEM_W = 160;
-const PERSONAGEM_H = 260;
+const PERSONAGEM_W = 200;
+const PERSONAGEM_H = 310;
 const BALAO_W = 320;
 const BALAO_H = 250;
 const GAP = 8;
